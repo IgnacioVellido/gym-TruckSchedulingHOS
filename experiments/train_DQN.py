@@ -3,10 +3,10 @@ import torch
 import gym
 import numpy as np
 import osmnx as ox
-import datetime
+from datetime import datetime
 from pathlib import Path
 
-from models.DQN import DriverAgent
+from models.DQN import DQN
 from models import DriverNet_v1 as DriverNet
 from logger.DQNLogger import DQNLogger
 
@@ -24,7 +24,7 @@ save_dir.mkdir(parents=True)
 
 # ------------------------------------------------------------------------------
 # Load graph
-graph_path = 'data/andalusia-edited-multigraph-numerical-fullyconnected.graphml'
+graph_path = '../data/andalusia-edited-multigraph-numerical-fullyconnected.graphml'
 
 G = ox.load_graphml(graph_path, 
                     node_dtypes={'type':int,
@@ -66,7 +66,7 @@ options = {
     "sync_every": 1e3
 }
 
-agent = DriverAgent(**options)
+agent = DQN(**options)
 
 # ------------------------------------------------------------------------------
 # Set logger
