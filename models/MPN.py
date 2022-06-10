@@ -46,7 +46,7 @@ class Node_Model(torch.nn.Module):
             nn.ReLU(),
             nn.Linear(hiddens, hiddens))
         
-        self.node_mlp_2 = Sequential(
+        self.node_mlp_2 = nn.Sequential(
             nn.Linear(hiddens + num_node_attr, hiddens),
             nn.ReLU(),
             nn.Linear(hiddens, out_channels))

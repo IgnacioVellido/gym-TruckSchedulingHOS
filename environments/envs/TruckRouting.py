@@ -186,6 +186,12 @@ class TruckRouting(gym.Env):
 
         self.REFUEL = self.number_of_nodes + 3
 
+        # For plotting
+        self.gdf_nodes, self.gdf_edges = ox.graph_to_gdfs(self.network, nodes=True, edges=True)
+        color_map = {0: 'w', 1: 'c', 2: 'y', 3: 'g'}
+
+        self.colors = self.gdf_nodes['type'].replace(color_map)
+
     # ----------------------------------------------------------------------------
     # ----------------------------------------------------------------------------
 
@@ -251,6 +257,9 @@ class TruckRouting(gym.Env):
 
             self.fuel = self.max_fuel
 
+
+        # For plotting
+        self.start_node = self.current_node
 
         # Auxiliary variables to calculate reward
         self.path = []
@@ -589,25 +598,20 @@ class TruckRouting(gym.Env):
 
     def render(self, mode='human'):
         """ Plot map with current path, actual and target node at this step """    
-    
+        color_map = {0: 'w', 1: 'c', 2: 'y', 3: 'g'}
+
         fig, ax = ox.plot_graph_route(self.network, self.path,
+                                      node_color=self.colors,
                                       figsize=(20,17),
                                       show=False, close=False) # OSMnx closes and
                                                                # shows by default
     
-        # Plot current and target node
-        nodes_df = pd.DataFrame({
-            "Longitude": [self.nodes[self.target_node]['x'], self.nodes[self.current_node]['x']],
-            "Latitude": [self.nodes[self.target_node]['y'], self.nodes[self.current_node]['y']]
-        })
+        # Plot start, current and target node
+        self.gdf_nodes.iloc[
+            [self.start_node, self.current_node, self.target_node]
+        ].plot(ax=ax, color='lime', markersize=30)
 
-        gdf_nodes = geopandas.GeoDataFrame(
-            nodes_df, 
-            geometry=geopandas.points_from_xy(nodes_df['Longitude'], nodes_df['Latitude'])
-        )
-
-        gdf_nodes.plot(ax=ax, color='lime', markersize=30)
-
+        # Return
         if mode == 'rgb_array':
             return np.array(fig.canvas.buffer_rgba())
         elif mode == 'human':
