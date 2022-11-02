@@ -1,6 +1,3 @@
-# Thanks for ideas of the implementation:
-# https://github.com/dyllanwli/GraphRouteOptimizationRL/blob/master/src/gym_graph_map/envs/graph_map_env.py
-
 import numpy as np
 import pandas as pd
 from datetime import datetime, time, timedelta
@@ -16,6 +13,7 @@ from gym import spaces
 # for plotting
 import matplotlib.pyplot as plt
 import geopandas
+
 
 class TruckRouting(gym.Env):
     """
@@ -47,11 +45,11 @@ class TruckRouting(gym.Env):
     WEEKLY_REST = 45 # hours
 
     # Weights of metrics used in reward
-    # REGRET_FUEL = 999
-    # REGRET_SEQT = 5
-    # REGRET_DAYT = 10
-    # REGRET_SEQT = 29
-    # REGRET_TW   = 5
+    REGRET_FUEL = 999
+    REGRET_TW   = 100
+    REGRET_SEQT = 50
+    REGRET_DAYT = 100
+    REGRET_WEET = 200
 
     # --------------------------------------------------------------------------
     # --------------------------------------------------------------------------
@@ -271,9 +269,9 @@ class TruckRouting(gym.Env):
         # self.reward = 0
         # self.start_time = self.current_time
 
-        # self.hos_infractions  = 0
-        # self.tw_infractions   = 0
-        # self.fuel_infractions = 0
+        self.total_hos_infractions  = 0
+        self.total_tw_infractions   = 0
+        self.total_fuel_infractions = 0
 
         self.total_fuel     = 0
         self.total_distance = 0
@@ -398,7 +396,7 @@ class TruckRouting(gym.Env):
             # speed = edge['speed']
             duration = 1 / ((speed/60) / length) # in minutes
 
-            # ------------------------------------------------------------------------
+            # ------------------------------------------------------------------
             # Update counters for reward
             # fuel clipped to remaining fuel in tank
             self.step_distance = length / 1000                               # Km
@@ -406,32 +404,28 @@ class TruckRouting(gym.Env):
             self.step_duration = duration / 60                               # h
             
             
-            
-            # self.total_length += length
-
             self.seq_t  += duration # HoS
             self.day_t  += duration
             self.week_t += duration
 
             self.fuel -= self.step_fuel  # Fuel consumption
 
-            # if self.fuel < 0:
-            #   self.fuel_infractions += 999
-
-
+            # ------------------------------------------------------------------
+            # Update total infractions
+            if self.fuel < 0:
+              self.total_fuel_infractions += self.REGRET_FUEL
                     
             # HoS infractions
-            # if self.seq_t > self.MAX_SEQ_T:
-            #   self.hos_infractions += 5
-            # if self.day_t > self.MAX_DAY_T:
-            #   self.hos_infractions += 10
-            # if self.week_t > self.MAX_WEEK_T:
-            #   self.hos_infractions += 20
+            if self.seq_t > self.MAX_SEQ_T:
+              self.total_hos_infractions += self.REGRET_SEQT
+            if self.day_t > self.MAX_DAY_T:
+              self.total_hos_infractions += self.REGRET_DAYT
+            if self.week_t > self.MAX_WEEK_T:
+              self.total_hos_infractions += self.REGRET_WEET
 
             # Arriving in valid time window (we can assume being in target as 
             # otherwise value will be 0)
-            # time_window = 0 if self._check_tw() else 5 + self._find_tw_difference()
-            # self.tw_infractions += time_window
+            self.total_tw_infractions += 0 if self._check_tw() else (self.REGRET_TW + self._find_tw_difference())
 
             # ------------------------------------------------------------------
             self.path.append(action)  # Store new node in path
@@ -454,57 +448,67 @@ class TruckRouting(gym.Env):
 
     # --------------------------------------------------------------------------
     # --------------------------------------------------------------------------
-    """ 
-    OLD Reward:
-        - (length + duration + tw + fuel + HoS)    in client node
-        - total_length   = 1 for each kilometer?
-        - total_duration = 1 for each minute
-        - tw_infractions = (0 if arriving in time_window) (else 5 + 1 for each minute of difference) at each node
-        - hos_infractions = at each node
-        - total_fuel = 1 for each liter
-        - fuel_infractinos = 
-        - zero otherwise     (could decide not to move instead? The episode would not end in that case)
-    """
+
     def _get_reward(self):
         """
-        Natural reward (negative, maximization problem):
+        Natural (informative) reward (negative, maximization problem). Calculated
+        as:
+
         distance (km) + duration (h) + fuel (L) + infractions_penalty
         
         infractions_penalty = tw_infractions + hos_infractions + fuel_infractions
 
-        tw_infractions = 100 + hours from time window   if out of time window
-                                                    0   otherwise
+        tw_infractions = REGRET_TW + hours from time window   if out of time window
+                         0   otherwise
+            REGRET_TW = 100
 
-        fuel_infractions = 999   if actual_fuel < 0
-                             0   otherwise
+        fuel_infractions = REGRET_FUEL if actual_fuel < 0
+                           0   otherwise
+            REGRET_FUEL = 999
 
-        hos_infraction = 0
-        hos_infraction +=  50 if seq_t  > MAX_SEQ_T  else 0
-        hos_infraction += 100 if day_t  > MAX_DAY_T  else 0
-        hos_infraction += 200 if week_t > MAX_WEEK_T else 0
+        hos_infraction  = 0
+        hos_infraction += REGRET_SEQT if seq_t  > MAX_SEQ_T  else 0
+        hos_infraction += REGRET_DAYT if day_t  > MAX_DAY_T  else 0
+        hos_infraction += REGRET_WEET if week_t > MAX_WEEK_T else 0
+
+            REGRET_SEQT = 50
+            REGRET_DAYT = 100
+            REGRET_WEET = 200
         """
         # TODO: Round to Km, and hours?
-        # reward = 0
+        time_window_infraction = 0 if self._check_tw() else (self.REGRET_TW + self._find_tw_difference())
 
-        # TODO: Shaped reward
-        # if self.current_node == self.target_node # They are index, no need fo np.array_equal()
-        #   reward = self.total_length + self.total_duration + self.total_fuel + \
-        #           self.hos_infractions +  self.tw_infractions + self.fuel_infractions
-        
-        # Natural reward (informative reward?)
-        time_window_infraction = 0 if self._check_tw() else (100 + self._find_tw_difference())
-
-        fuel_infraction = 999 if self.fuel < 0 else 0
+        fuel_infraction = self.REGRET_FUEL if self.fuel < 0 else 0
 
         hos_infraction = 0
-        hos_infraction +=  50 if self.seq_t > self.MAX_SEQ_T else 0
-        hos_infraction += 100 if self.day_t > self.MAX_DAY_T else 0
-        hos_infraction += 200 if self.week_t > self.MAX_WEEK_T else 0
+        hos_infraction += self.REGRET_SEQT if self.seq_t > self.MAX_SEQ_T else 0
+        hos_infraction += self.REGRET_DAYT if self.day_t > self.MAX_DAY_T else 0
+        hos_infraction += self.REGRET_WEET if self.week_t > self.MAX_WEEK_T else 0
 
         reward = - (self.step_distance + self.step_duration + self.step_fuel + \
                     time_window_infraction + hos_infraction + fuel_infraction)
 
         return reward 
+
+    def shaped_reward(self):
+        """ 
+        Shaped reward (RL agent will take a lot to update, NOT RECOMMENDED):
+            - (length + duration + tw + fuel + HoS)    in client node
+                - total_distance = 1 for each kilometer
+                - total_duration = 1 for each minute
+                - total_fuel     = 1 for each liter
+                - total_tw_infractions   = Sum of (0 if arriving in time_window) (else 5 + 1 for each minute of difference) at each node
+                - total_hos_infractions  = Sum of hos infractions at each node
+                - total_fuel_infractions = Sum of fuel infractions at each node
+            - zero otherwise
+        """
+        reward = 0
+
+        if self.current_node == self.target_node: # They are index, no need fo np.array_equal()
+            reward = (self.total_distance + self.total_duration + self.total_fuel +
+                     self.total_hos_infractions +  self.total_tw_infractions + self.total_fuel_infractions)
+
+        return reward
 
     # ----------------------------------------------------------------------------
 
@@ -545,7 +549,7 @@ class TruckRouting(gym.Env):
     def action_space_sample(self):
         """ Samples an action available from the action space """
         if any(self.mask != 0):
-            # [0] because where returns a tuple
+            # [0] because np.where returns a tuple
             return np.int64(np.random.choice(np.where(self.mask == 1)[0]))
         else:
             print("No actions available!!")
