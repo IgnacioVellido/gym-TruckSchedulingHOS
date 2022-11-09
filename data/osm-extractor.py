@@ -13,8 +13,9 @@ def query_graph(place: str = 'Spain',
                             simplify=True, custom_filter=filter)
 
     # Remove attributes
+    # remove_attributes(G)
 
-    # Simplify?
+    # Simplify
     # https://osmnx.readthedocs.io/en/stable/osmnx.html#module-osmnx.simplification
 
     # Plot graph
@@ -27,6 +28,7 @@ def query_graph(place: str = 'Spain',
 
 
 def remove_attributes(G):
+    """Remove OSM attributes not used by the environment"""
     # DON'T EXECUTE WHILE TESTING, ONLY TO GET FINAL GRAPH
 
     # Edge attributes to remove
@@ -36,7 +38,6 @@ def remove_attributes(G):
         'to',
         'osmid',
         'ref',
-
         'width',
         "junction",
         "access",
@@ -46,24 +47,24 @@ def remove_attributes(G):
         "bridge",
         "highway",
         "name",
-        "oneway"
+        "oneway",
+        "service"
     ]
 
-    for n1, n2, d in G.edges(data=True):
+    for _, _, d in G.edges(data=True):
         for att in att_list:
             d.pop(att, None)
 
     # Node attributes to remove
     att_list = [
         "ref",
-
         "highway",
         "street_count",
-        "x",  # Don't remove in RL
-        "y"   # Don't remove in RL
+        # "x",  # Don't remove in RL
+        # "y"   # Don't remove in RL
     ]
 
-    for n, d in G.nodes(data=True):
+    for _, d in G.nodes(data=True):
         for att in att_list:
             d.pop(att, None)
 
@@ -75,9 +76,9 @@ def time_to_min(t):
   return t.hour * 60 + t.minute
 
 
-def preprocess_graph(G):
+def preprocess_graph(G, undirected=False):
     G_nx = nx.relabel.convert_node_labels_to_integers(G)
-    nodes, edges = ox.graph_to_gdfs(G_nx, nodes=True, edges=True)
+    # nodes, edges = ox.graph_to_gdfs(G_nx, nodes=True, edges=True)
 
     # Set node attributes (type and time windows)
     G_nx = set_node_attributes(G_nx)
@@ -87,6 +88,10 @@ def preprocess_graph(G):
 
     # Add speed to edges
     G_nx = set_graph_speed(G_nx)
+
+    # To undirected
+    if undirected:
+        G_nx = G.to_undirected()
 
     return G_nx
 
@@ -144,19 +149,15 @@ def remove_deadends(G):
 
 # ------------------------------------------------------------------------------
 
-def set_graph_speed(G):
-    # NOTE: maxspeed not available in all nodes
+def set_graph_speed(G, keep_graph_speed=False):
+    """NOTE: maxspeed is not available in all nodes"""
 
     speeds = [50000, 80000, 90000, 100000] 
-    for u,v,att in G.edges(data=True):
-        # TODO: Set maxspeed if defined
-        # Sometimes maxspeed is str, other list(str)
-        # if 'maxspeed' in att:
-        #   if len(att['maxspeed'])
-        #   print(att['maxspeed'])
-        #   att['speed'] = int(att['maxspeed'][0]) * 1000
-        #   print(att['speed'])
-        # else:
-        att['speed'] = np.random.choice(speeds, p=[0.1,0.4,0.4,0.1]) # Add random speed
+    for _,_,att in G.edges(data=True):
+        if keep_graph_speed and 'maxspeed' in att:
+            # Sometimes maxspeed is str, other list(str)
+            att['speed'] = int(att['maxspeed'][0]) * 1000
+        else:
+            att['speed'] = np.random.choice(speeds, p=[0.1,0.4,0.4,0.1]) # Add random speed
 
     return G
